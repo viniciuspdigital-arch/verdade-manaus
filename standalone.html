@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VerdadeManaus - Híbrido</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- html2canvas -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- Babel Standalone -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+
+<body class="bg-slate-50">
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useRef } from 'https://esm.sh/react@18.2.0?dev';
+        import { createRoot } from 'https://esm.sh/react-dom@18.2.0/client?dev';
+        import { Shield, Search, AlertTriangle, CheckCircle, XCircle, Info, Menu, X, Share2, MapPin, Settings, Key, Zap, Globe, Sparkles, RefreshCw, Paperclip, Mic, Download, Image as ImageIcon } from 'https://esm.sh/lucide-react@0.300.0?dev';
+
+        // Configuração das APIs
+        const PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions";
+        const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent"; // Mantido para multimodais se necessário
+        const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
+
+        // Chaves de API - Configure via modal de configurações
+        // NUNCA commit chaves direto no código!
+        const DEFAULT_OPENAI_KEY = "";
+        const DEFAULT_PERPLEXITY_KEY = "";
+
+        const fetchWithRetry = async (url, options, retries = 3) => {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (response.status === 429 && i < retries - 1) {
+                        const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        continue;
+                    }
+                    return response;
+                } catch (error) {
+                    if (i < retries - 1) continue;
+                    throw error;
+                }
+            }
+        };
+
+        function App() {
+            const [query, setQuery] = useState('');
+            const [status, setStatus] = useState('idle'); // idle, searching_google, analyzing_openai, done, error
+            const [result, setResult] = useState(null);
+            const [sources, setSources] = useState([]);
+            const [activeTab, setActiveTab] = useState('home');
+            const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+            // Estados para as chaves
+            const [openAIKey, setOpenAIKey] = useState(DEFAULT_OPENAI_KEY);
+            const [perplexityKey, setPerplexityKey] = useState(DEFAULT_PERPLEXITY_KEY);
+            const [geminiKey, setGeminiKey] = useState(''); // Mantido opcional para multimodais
+            const [showSettingsModal, setShowSettingsModal] = useState(false);
+
+            // Estados novos (Phase 2)
+            const [trendingNews, setTrendingNews] = useState([]);
+            const [isLoadingNews, setIsLoadingNews] = useState(false);
+            const [isTranscribing, setIsTranscribing] = useState(false);
+            const [selectedTopic, setSelectedTopic] = useState('Geral');
+            const [isDragging, setIsDragging] = useState(false); // Drag and Drop State
+            const cardRef = useRef(null);
+
+            const topics = ["Geral", "David Almeida", "Amom Mandel", "Wilson Lima", "Alberto Neto", "Roberto Cidade"];
+
+            // Inicializar Trending News se tiver chave do Gemini
+            useEffect(() => {
+                if (activeTab === 'home') {
+                    fetchTrendingNews(selectedTopic); // This call is now handled by the new useEffect
+                }
+            }, [activeTab]);
+
+            const fetchTrendingNews = async (topic = 'Geral') => {
+                setIsLoadingNews(true);
+                try {
+                    // API Direta: https://painel.redeondadigital.com.br/wp-json/wp/v2/posts?categories=11
+                    let url = 'https://painel.redeondadigital.com.br/wp-json/wp/v2/posts?categories=11&per_page=6&_fields=id,date,link,title,excerpt,slug';
+
+                    if (topic !== 'Geral') {
+                        url += `&search=${encodeURIComponent(topic)}`;
+                    }
+
+                    const response = await fetch(url);
+                    const data = await response.json();
+
+                    if (!Array.isArray(data)) {
+                        console.error("API response is not an array:", data);
+                        setTrendingNews([]);
+                        return;
+                    }
+
+                    const formattedNews = data.map(post => ({
+                        headline: post.title.rendered,
+                        // Remove HTML tags from excerpt
+                        description: post.excerpt?.rendered ? post.excerpt.rendered.replace(/<[^>]*>?/gm, '').replace('[&hellip;]', '...') : '',
+                        date: new Date(post.date).toLocaleDateString('pt-BR'),
+                        // Construir URL limpa: https://redeondadigital.com.br + /politica/ + slug
+                        url: `https://redeondadigital.com.br/politica/${post.slug}`
+                    }));
+
+                    setTrendingNews(formattedNews);
+                } catch (error) {
+                    console.error("Erro ao buscar notícias:", error);
+                } finally {
+                    setIsLoadingNews(false);
+                }
+            };
+
+            // Efeito para carregar notícias iniciais
+            useEffect(() => {
+                fetchTrendingNews(selectedTopic);
+            }, [selectedTopic]);
+
+            const handleDragOver = (e) => {
+                e.preventDefault();
+                setIsDragging(true);
+            };
+
+            const handleDragLeave = (e) => {
+                e.preventDefault();
+                setIsDragging(false);
+            };
+
+            const handleDrop = async (e) => {
+                e.preventDefault();
+                setIsDragging(false);
+                const file = e.dataTransfer.files[0];
+                if (file) {
+                    handleFileUpload(file);
+                }
+            };
+
+            const handleFileUpload = async (fileOrEvent, type) => {
+                const file = fileOrEvent.target ? fileOrEvent.target.files[0] : fileOrEvent;
+
+                if (!file || !geminiKey) {
+                    if (!geminiKey) {
+                        alert("Para usar upload de arquivos, você precisa de uma chave Gemini (configure nas opções).");
+                        setShowSettingsModal(true);
+                    }
+                    return;
+                }
+
+                setIsTranscribing(true);
+                try {
+                    // Converter para Base64
+                    const reader = new FileReader();
+                    reader.readAsDataURL(file);
+                    reader.onloadend = async () => {
+                        const base64Data = reader.result.split(',')[1];
+                        const mimeType = file.type;
+
+                        const payload = {
+                            contents: [{
+                                parts: [
+                                    { text: "Descreva detalhadamente o que é dito ou mostrado neste arquivo para fins de verificação de fatos. Se for texto, transcreva." },
+                                    { inline_data: { mime_type: mimeType, data: base64Data } }
+                                ]
+                            }]
+                        };
+
+                        const response = await fetchWithRetry(`${GEMINI_API_URL}?key=${geminiKey}`, {
+                            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+                        });
+                        const data = await response.json();
+                        const transcription = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                        if (transcription) {
+                            const finalQuery = `[Conteúdo do Arquivo]: ${transcription}`;
+                            setQuery(finalQuery); // Atualiza UI
+                            setActiveTab('verify');
+                            // AUTO-TRIGGER: Dispara a busca imediatamente
+                            handleSearch(null, finalQuery);
+                        }
+                        setIsTranscribing(false);
+                    };
+                } catch (e) {
+                    console.error(e);
+                    setIsTranscribing(false);
+                    alert("Erro ao processar arquivo. Verifique sua chave Gemini.");
+                }
+            };
+
+            const generateCard = async () => {
+                if (cardRef.current) {
+                    try {
+                        const canvas = await html2canvas(cardRef.current, { scale: 2, backgroundColor: '#ffffff' });
+                        const image = canvas.toDataURL("image/png");
+                        const link = document.createElement("a");
+                        link.href = image;
+                        link.download = `VerdadeManaus-Check-${Date.now()}.png`;
+                        link.click();
+                    } catch (e) {
+                        console.error("Erro ao gerar card:", e);
+                    }
+                }
+            };
+
+            const handleSearch = async (e, manualQuery = null) => {
+                if (e) e.preventDefault();
+
+                // Use manualQuery if provided, otherwise state query
+                const textToSearch = manualQuery || query;
+                if (!textToSearch) return;
+
+                if (!openAIKey || !perplexityKey) {
+                    setShowSettingsModal(true);
+                    return;
+                }
+
+                // Se foi chamado manualmente (upload), garante que o estado query esteja sincronizado
+                if (manualQuery) setQuery(manualQuery);
+
+                setStatus('searching_google');
+                setResult(null);
+                setSources([]);
+
+                try {
+                    // --- PASSO 1: PERPLEXITY (Busca/Grounding) ---
+                    // Modelo sonar-pro ou sonar para busca
+                    const searchPrompt = `Faça uma varredura completa na web sobre: "${textToSearch}".
+            1. Busque primeiro no "redeondadigital.com.br" para ver se há confirmação oficial.
+            2. Busque em agências de checagem (Lupa, Aos Fatos, Boatos.org) se for um rumor viral.
+            3. Identifique se é um boato, sátira ou notícia verdadeira fora de contexto.`;
+
+                    const perplexityPayload = {
+                        model: "sonar-pro", // ou "sonar"
+                        messages: [
+                            { role: "system", content: "Você é um assistente de busca preciso. Retorne respostas baseadas em fontes reais." },
+                            { role: "user", content: searchPrompt }
+                        ],
+                        temperature: 0.1
+                    };
+
+                    const perplexityResponse = await fetchWithRetry(PERPLEXITY_API_URL, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${perplexityKey}`
+                        },
+                        body: JSON.stringify(perplexityPayload)
+                    });
+
+                    if (!perplexityResponse.ok) {
+                        // Tenta ler o erro
+                        let errMsg = perplexityResponse.statusText;
+                        try {
+                            const errData = await perplexityResponse.json();
+                            errMsg = errData.error?.message || errMsg;
+                        } catch (e) { }
+                        throw new Error(`Erro na Perplexity: ${errMsg}`);
+                    }
+
+                    const perplexityData = await perplexityResponse.json();
+                    const searchContext = perplexityData.choices?.[0]?.message?.content || "Nenhuma informação adicional encontrada na busca.";
+
+                    // Extração de Citações da Perplexity
+                    // A API retorna um array "citations": ["url1", "url2"]
+                    // As citações no texto são markers [1], [2] etc.
+                    let extractedSources = [];
+                    if (perplexityData.citations) {
+                        extractedSources = perplexityData.citations.map((url, index) => ({
+                            uri: url,
+                            title: url // Perplexity geralmente retorna só a URL na lista
+                        }));
+                    }
+                    setSources(extractedSources);
+
+                    // --- PASSO 2: OPENAI (Análise) ---
+                    setStatus('analyzing_openai');
+
+                    const openAISystemPrompt = `Você é um verificador de fatos (fact-checker) especializado em política de Manaus/Amazonas.
+      
+      SUA MISSÃO: Determinar a veracidade da alegação com base no contexto fornecido.
+      
+      REGRAS DE VEREDITO:
+      - SE o contexto confirmar com fontes oficiais -> VERDADEIRO (Confidence: High)
+      - SE o contexto tiver desmentidos de agências de checagem (mesmo sem Rede Onda Digital) -> FALSO (Confidence: High)
+      - SE o contexto mostrar que é antigo ou fora de contexto -> FALSO/ENGANOSO
+      - SE não houver NENHUMA menção em fontes confiáveis e for uma alegação grave -> CUIDADO (Sem provas)
+      
+      IMPORTANTE: Não fique "em cima do muro". Se é boato conhecido, crave FALSO.
+
+      Responda EXCLUSIVAMENTE um objeto JSON válido (sem markdown):
+      {
+        "status": "true" | "fake" | "warning" | "scam",
+        "title": "Veredito Curto e Impactante",
+        "message": "Explicação direta. Comece com 'É FALSO que...' ou 'É VERDADE que...'. Cite a fonte se houver.",
+        "confidence": "XX%"
+      }`;
+
+                    const openAIPayload = {
+                        model: "gpt-4o",
+                        response_format: { type: "json_object" },
+                        messages: [
+                            { role: "system", content: openAISystemPrompt },
+                            { role: "user", content: `CONTEXTO DA BUSCA (Perplexity):\n${searchContext}\n\nAnalise: "${textToSearch}"` }
+                        ]
+                    };
+
+                    const openAIResponse = await fetchWithRetry(OPENAI_API_URL, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${openAIKey}`,
+                        },
+                        body: JSON.stringify(openAIPayload)
+                    });
+
+                    if (!openAIResponse.ok) throw new Error("Erro na OpenAI");
+
+                    const openAIData = await openAIResponse.json();
+                    const aiContent = openAIData.choices?.[0]?.message?.content;
+
+                    const cleanJson = aiContent.replace(/```json|```/g, '').trim();
+                    const finalResult = JSON.parse(cleanJson);
+                    setResult(finalResult);
+                    setStatus('done');
+
+                } catch (error) {
+                    console.error(error);
+                    setResult({
+                        status: 'warning',
+                        title: 'Erro no Processo',
+                        message: `Falha: ${error.message}. Verifique suas chaves.`,
+                        confidence: '0%'
+                    });
+                    setStatus('error');
+                }
+            };
+
+            const StatusBadge = ({ status }) => {
+                const styles = {
+                    fake: 'bg-red-100 text-red-700 border-red-200',
+                    true: 'bg-green-100 text-green-700 border-green-200',
+                    scam: 'bg-orange-100 text-orange-700 border-orange-200',
+                    warning: 'bg-yellow-100 text-yellow-800 border-yellow-200'
+                };
+
+                const labels = {
+                    fake: 'FALSO',
+                    true: 'VERDADEIRO',
+                    scam: 'GOLPE',
+                    warning: 'IMPRECISO'
+                };
+                const icons = {
+                    fake: <XCircle size={14} className="mr-1" />,
+                    true: <CheckCircle size={14} className="mr-1" />,
+                    scam: <AlertTriangle size={14} className="mr-1" />,
+                    warning: <AlertTriangle size={14} className="mr-1" />
+                };
+
+                return (
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${styles[status] || styles.warning}`}>
+                        {icons[status]}
+                        {labels[status]}
+                    </span>
+                );
+            };
+
+            return (
+                <div className="min-h-screen bg-slate-50 font-sans text-slate-800 pb-20 md:pb-0 relative">
+
+                    {/* Hidden Card Template for Capture */}
+                    {result && (
+                        <div style={{ position: 'absolute', top: '-2000px', left: '-2000px' }}>
+                            <div ref={cardRef} className="w-[600px] h-[600px] bg-slate-900 text-white p-10 flex flex-col justify-between relative overflow-hidden">
+                                <div className="absolute top-0 right-0 p-10 opacity-10"><Shield size={300} /></div>
+
+                                <div className="z-10 flex items-center gap-4">
+                                    <div className="bg-emerald-600 p-3 rounded-xl"><Shield size={40} /></div>
+                                    <h1 className="text-3xl font-bold">VerdadeManaus</h1>
+                                </div>
+
+                                <div className="z-10 text-center">
+                                    <div className={`inline-block px-8 py-2 rounded-full text-3xl font-bold mb-6 border-4 ${result.status === 'fake' ? 'bg-red-600 border-red-400' :
+                                        result.status === 'true' ? 'bg-emerald-600 border-emerald-400' : 'bg-orange-500 border-orange-300'
+                                        }`}>
+                                        {result.status === 'fake' ? 'FALSO ❌' : result.status === 'true' ? 'VERDADEIRO ✅' : 'CUIDADO ⚠️'}
+                                    </div>
+                                    <h2 className="text-2xl font-bold mb-4 leading-tight">"{result.title}"</h2>
+                                    <p className="text-xl text-slate-300">{result.message}</p>
+                                </div>
+
+                                <div className="z-10 border-t border-slate-700 pt-6 flex justify-between items-center text-sm text-slate-400">
+                                    <span>Verificado por IA + Rede Onda Digital</span>
+                                    <span>{new Date().toLocaleDateString()}</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Settings Modal */}
+                    {showSettingsModal && (
+                        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+                            <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-lg font-bold flex items-center gap-2">
+                                        <Settings className="text-emerald-600" size={20} />
+                                        Configurar APIs (Híbrido)
+                                    </h3>
+                                    <button onClick={() => setShowSettingsModal(false)} className="text-slate-400 hover:text-slate-600">
+                                        <X size={20} />
+                                    </button>
+                                </div>
+
+                                <p className="text-sm text-slate-600 mb-4 bg-yellow-50 p-3 rounded border border-yellow-100">
+                                    Chave Perplexity é usada para buscas. Gemini (opcional) para arquivos.
+                                </p>
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">OpenAI API Key (Análise)</label>
+                                        <input type="password" value={openAIKey} onChange={(e) => setOpenAIKey(e.target.value)} className="w-full p-3 border border-slate-300 rounded-lg outline-none font-mono text-sm" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Perplexity API Key (Busca/Verificação)</label>
+                                        <input type="password" value={perplexityKey} onChange={(e) => setPerplexityKey(e.target.value)} placeholder="pplx-..." className="w-full p-3 border border-slate-300 rounded-lg outline-none font-mono text-sm" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Google Gemini Key (Opcional - Arquivos)</label>
+                                        <input type="password" value={geminiKey} onChange={(e) => setGeminiKey(e.target.value)} placeholder="Cole sua Gemini API Key..." className="w-full p-3 border border-slate-300 rounded-lg outline-none font-mono text-sm" />
+                                    </div>
+                                </div>
+
+                                <button onClick={() => setShowSettingsModal(false)} className="mt-6 w-full bg-emerald-600 text-white py-3 rounded-lg font-bold hover:bg-emerald-700 transition">Salvar Configurações</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Header */}
+                    <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
+                        <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
+                            <div className="flex items-center gap-2 cursor-pointer" onClick={() => setActiveTab('home')}>
+                                <div className="bg-emerald-600 text-white p-1.5 rounded-lg">
+                                    <Shield size={20} />
+                                </div>
+                                <div>
+                                    <h1 className="text-lg font-bold text-slate-900 leading-none">Verdade<span className="text-emerald-600">Manaus</span></h1>
+                                    <p className="text-slate-500 text-[10px] uppercase tracking-wider font-semibold">Monitor Eleitoral</p>
+                                </div>
+                            </div>
+                            <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
+                                <button onClick={() => setActiveTab('home')} className={`hover:text-emerald-600 transition ${activeTab === 'home' ? 'text-emerald-600' : ''}`}>Início</button>
+                                <button onClick={() => setActiveTab('verify')} className={`hover:text-emerald-600 transition ${activeTab === 'verify' ? 'text-emerald-600' : ''}`}>Verificar</button>
+                                <button onClick={() => setShowSettingsModal(true)} className={`p-2 rounded-full hover:bg-slate-100 transition ${(!openAIKey || !perplexityKey) ? 'text-orange-500 animate-pulse' : 'text-slate-400'}`}><Settings size={18} /></button>
+                            </nav>
+                            <div className="flex items-center gap-3 md:hidden">
+                                <button onClick={() => setShowSettingsModal(true)} className={`text-slate-600 ${(!openAIKey || !perplexityKey) ? 'text-orange-500' : ''}`}><Settings size={20} /></button>
+                                <button className="text-slate-600" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>{mobileMenuOpen ? <X /> : <Menu />}</button>
+                            </div>
+                        </div>
+                    </header>
+
+                    <main className="max-w-4xl mx-auto px-4 py-6">
+
+                        {/* VIEW: HOME */}
+                        {activeTab === 'home' && (
+                            <div className="space-y-8 animate-in fade-in duration-500">
+
+                                {/* HERO RESTAURADO: EMERALD/TEAL GRADIENT */}
+                                <div className="bg-gradient-to-br from-emerald-700 to-teal-900 rounded-2xl p-6 md:p-10 text-white shadow-xl relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 p-8 opacity-10">
+                                        <Shield size={180} />
+                                    </div>
+
+                                    <div className="relative z-10">
+                                        <h2 className="text-2xl md:text-3xl font-bold mb-3">Monitor: Rede Onda Digital</h2>
+                                        <p className="text-emerald-100 mb-6 max-w-lg">
+                                            Usamos IA para comparar boatos com notícias oficiais do portal <span className="text-white font-bold">redeondadigital.com.br</span>.
+                                        </p>
+
+                                        <div
+                                            onDragOver={handleDragOver}
+                                            onDragLeave={handleDragLeave}
+                                            onDrop={handleDrop}
+                                            className={`bg-white p-2 rounded-xl shadow-lg flex flex-col md:flex-row gap-2 transition border-2 ${isDragging ? 'border-emerald-500 scale-105 bg-emerald-50' : 'border-transparent'}`}
+                                        >
+                                            <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={isDragging ? "Solte a imagem aqui!" : "Cole um boato ou link..."} className="flex-1 p-3 text-slate-800 placeholder-slate-400 focus:outline-none rounded-lg bg-transparent" />
+
+                                            <button onClick={() => { handleSearch(); setActiveTab('verify'); }} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-lg font-bold transition flex items-center justify-center gap-2">
+                                                <Search size={18} /> Verificar
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Trending Section */}
+                                <div>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                            <Zap size={18} className="text-emerald-600" />
+                                            Em Alta na Política (Rede Onda Digital)
+                                        </h3>
+                                    </div>
+
+                                    {/* Politician Filter */}
+                                    <div className="flex gap-2 overflow-x-auto pb-4 mb-2 no-scrollbar">
+                                        {topics.map(topic => (
+                                            <button
+                                                key={topic}
+                                                onClick={() => setSelectedTopic(topic)}
+                                                className={`whitespace-nowrap px-4 py-1.5 rounded-full text-xs font-bold border transition ${selectedTopic === topic
+                                                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-md'
+                                                    : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-400 hover:text-emerald-600'
+                                                    }`}
+                                            >
+                                                {topic}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {isLoadingNews ? (
+                                        <div className="grid gap-4 md:grid-cols-3 animate-pulse">
+                                            {[1, 2, 3].map(i => <div key={i} className="h-32 bg-slate-100 rounded-xl"></div>)}
+                                        </div>
+                                    ) : trendingNews.length === 0 ? (
+                                        <div className="text-center p-8 text-slate-500">
+                                            Nenhuma notícia encontrada para este tópico.
+                                        </div>
+                                    ) : (
+                                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                                            {trendingNews.map((item, i) => (
+                                                <div
+                                                    key={i}
+                                                    onClick={() => window.open(item.url, '_blank')}
+                                                    className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition cursor-pointer group hover:border-emerald-100"
+                                                >
+                                                    <div className="flex justify-between items-start mb-3">
+                                                        <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">{item.date || 'Recente'}</span>
+                                                        <Globe size={12} className="text-slate-300 group-hover:text-emerald-500" />
+                                                    </div>
+                                                    <h4 className="font-bold text-slate-800 text-sm leading-snug mb-2 group-hover:text-emerald-700 transition" dangerouslySetInnerHTML={{ __html: item.headline }}></h4>
+                                                    <p className="text-xs text-slate-500 line-clamp-3">{item.description}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* VIEW: VERIFY */}
+                        {activeTab === 'verify' && (
+                            <div className="max-w-2xl mx-auto pt-4 animate-in slide-in-from-bottom-4 duration-500">
+                                <button onClick={() => setActiveTab('home')} className="text-sm text-slate-500 hover:text-emerald-600 mb-4 flex items-center gap-1">← Voltar</button>
+                                <div className="bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
+                                    <div
+                                        onDragOver={handleDragOver}
+                                        onDragLeave={handleDragLeave}
+                                        onDrop={handleDrop}
+                                        className={`p-6 border-b border-slate-100 bg-slate-50/50 transition border-2 ${isDragging ? 'border-emerald-500 bg-emerald-50' : 'border-transparent'}`}
+                                    >
+                                        {/* Input Area */}
+                                        <div className="relative">
+                                            <textarea value={query} onChange={(e) => setQuery(e.target.value)} className={`w-full p-4 border rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none min-h-[120px] resize-none text-slate-700 font-medium ${isDragging ? 'bg-emerald-100 border-emerald-500' : 'border-slate-300'}`} placeholder={isDragging ? "Solte a imagem agora!" : "Cole o texto da notícia..."}></textarea>
+                                        </div>
+                                        <div className="mt-4 flex justify-end items-center">
+                                            <button onClick={handleSearch} disabled={!query || status === 'searching_google' || status === 'analyzing_openai'} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-lg font-bold transition flex items-center gap-2 disabled:bg-slate-300">
+                                                {status !== 'idle' && status !== 'done' && status !== 'error' ? <RefreshCw className="animate-spin" size={18} /> : <Search size={18} />}
+                                                Verificar
+                                            </button>
+                                        </div>
+                                        {isTranscribing && <p className="text-xs text-emerald-600 mt-2 font-bold animate-pulse">Lendo arquivo com IA...</p>}
+                                    </div>
+
+                                    {/* Result & Actions */}
+                                    <div className="p-6 bg-slate-50 min-h-[200px] flex items-center justify-center">
+                                        {result && status === 'done' && (
+                                            <div className="w-full">
+                                                <div className={`p-6 rounded-xl border-2 mb-6 text-center ${result.status === 'fake' ? 'bg-red-50 border-red-100' : result.status === 'true' ? 'bg-green-50 border-green-100' : 'bg-orange-50 border-orange-100'}`}>
+                                                    <div className="flex justify-center mb-4 text-4xl">{result.status === 'fake' ? '❌' : result.status === 'true' ? '✅' : '⚠️'}</div>
+                                                    <h3 className="text-2xl font-bold mb-2 text-slate-800">{result.title}</h3>
+                                                    <p className="text-slate-700">{result.message}</p>
+
+                                                    {/* WhatsApp Card Action */}
+                                                    <button onClick={generateCard} className="mt-6 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2 mx-auto transition shadow-lg shadow-green-200">
+                                                        <Share2 size={18} />
+                                                        Baixar Card para Zap
+                                                    </button>
+                                                </div>
+
+                                                {/* Fontes */}
+                                                {sources.length > 0 && (
+                                                    <div className="mt-4 pt-4 border-t border-slate-200">
+                                                        <h4 className="flex items-center gap-2 text-sm font-bold text-slate-700 mb-2"><Globe size={16} /> Fontes (Prioridade: Rede Onda Digital):</h4>
+                                                        <ul className="text-xs space-y-2 text-slate-600 bg-white p-3 rounded-lg border border-slate-100">{sources.map((s, i) => <li key={i}><a href={s.uri} target="_blank" className="hover:text-emerald-600 underline">{s.title}</a></li>)}</ul>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                    </main>
+                </div>
+            );
+        }
+
+        const container = document.getElementById('root');
+        const root = createRoot(container);
+        root.render(<App />);
+
+    </script>
+</body>
+
+</html>
