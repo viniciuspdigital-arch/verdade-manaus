@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Share2, MessageCircle, Menu, X, Filter, TrendingUp, Shield, CheckCircle, AlertTriangle, FileText, Upload, Zap, Settings, RefreshCw, ExternalLink, ChevronDown, Globe } from 'lucide-react';
+import { Search, Share2, MessageCircle, Menu, X, Filter, TrendingUp, Shield, CheckCircle, AlertTriangle, FileText, Upload, Zap, RefreshCw, ExternalLink, ChevronDown, Globe } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import logoOndaDigital from './assets/logo-onda-digital.png';
 import { Link } from 'lucide-react';
@@ -41,7 +41,7 @@ export default function App() {
     // Estados para as chaves
     const [openAIKey, setOpenAIKey] = useState(ENV_OPENAI_KEY || '');
     const [perplexityKey, setPerplexityKey] = useState(ENV_PERPLEXITY_KEY || '');
-    const [showSettingsModal, setShowSettingsModal] = useState(false);
+
 
     // Estados novos (Phase 2)
     const [trendingNews, setTrendingNews] = useState([]);
@@ -225,8 +225,7 @@ export default function App() {
 
         if (!file || !openAIKey) {
             if (!openAIKey) {
-                alert("Para usar upload de arquivos, você precisa de uma chave OpenAI configurada.");
-                setShowSettingsModal(true);
+                alert("Erro: Chave OpenAI não configurada no servidor.");
             }
             return;
         }
@@ -344,7 +343,7 @@ export default function App() {
         if (!textToSearch) return;
 
         if (!openAIKey || !perplexityKey) {
-            setShowSettingsModal(true);
+            alert("Erro: Chaves de API não configuradas no servidor.");
             return;
         }
 
@@ -550,51 +549,7 @@ export default function App() {
                 </div>
             )}
 
-            {/* Settings Modal */}
-            {showSettingsModal && (
-                <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-bold flex items-center gap-2">
-                                <Settings className="text-emerald-600" size={20} />
-                                Configurar APIs (Híbrido)
-                            </h3>
-                            <button onClick={() => setShowSettingsModal(false)} className="text-slate-400 hover:text-slate-600">
-                                <X size={20} />
-                            </button>
-                        </div>
 
-                        <p className="text-sm text-slate-600 mb-4 bg-yellow-50 p-3 rounded border border-yellow-100">
-                            Chave Perplexity é usada para buscas. OpenAI para análise e arquivos.
-                        </p>
-
-                        <div className="space-y-4">
-                            {/* Oculta inputs se as chaves estiverem no ENV (Modo Cliente) */}
-                            {(!ENV_OPENAI_KEY) && (
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">OpenAI API Key (Análise)</label>
-                                    <input type="password" value={openAIKey} onChange={(e) => setOpenAIKey(e.target.value)} className="w-full p-3 border border-slate-300 rounded-lg outline-none font-mono text-sm" />
-                                </div>
-                            )}
-
-                            {(!ENV_PERPLEXITY_KEY) && (
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Perplexity API Key (Busca/Verificação)</label>
-                                    <input type="password" value={perplexityKey} onChange={(e) => setPerplexityKey(e.target.value)} placeholder="pplx-..." className="w-full p-3 border border-slate-300 rounded-lg outline-none font-mono text-sm" />
-                                </div>
-                            )}
-
-                            {(ENV_OPENAI_KEY && ENV_PERPLEXITY_KEY) && (
-                                <div className="p-4 bg-emerald-50 text-emerald-700 text-sm rounded-lg flex items-center gap-2">
-                                    <Shield size={16} />
-                                    <span>As chaves de API estão configuradas seguramente pelo administrador.</span>
-                                </div>
-                            )}
-                        </div>
-                        <button onClick={() => setShowSettingsModal(false)} className="mt-6 w-full bg-emerald-600 text-white py-3 rounded-lg font-bold hover:bg-emerald-700 transition">Salvar Configurações</button>
-                    </div>
-                </div>
-            )}
 
             {/* Candidates Explorer Modal */}
             {
@@ -699,17 +654,8 @@ export default function App() {
                     <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
                         <button onClick={() => setActiveTab('home')} className={`hover:text-emerald-600 transition ${activeTab === 'home' ? 'text-emerald-600' : ''}`}>Início</button>
                         <button onClick={() => setActiveTab('verify')} className={`hover:text-emerald-600 transition ${activeTab === 'verify' ? 'text-emerald-600' : ''}`}>Verificar</button>
-                        <button onClick={() => setShowSettingsModal(true)} className={`p-2 rounded-full hover:bg-slate-100 transition ${(!openAIKey || !perplexityKey) ? 'text-orange-500 animate-pulse' : 'text-slate-400'}`}><Settings size={18} /></button>
                     </nav>
                     <div className="flex items-center gap-3 md:hidden">
-                        {/* Admin Trigger (Secret Click on Settings) */}
-                        <button onClick={(e) => {
-                            if (e.detail === 3) { // Triple click to show inputs if hidden
-                                alert("Modo Admin ativado");
-                                setOpenAIKey(''); // Clear to force input if needed or handle logic
-                            }
-                            setShowSettingsModal(true)
-                        }} className={`text-slate-600 ${(!openAIKey || !perplexityKey) ? 'text-orange-500' : ''}`}><Settings size={20} /></button>
                         <button className="text-slate-600" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>{mobileMenuOpen ? <X /> : <Menu />}</button>
                     </div>
                 </div>
