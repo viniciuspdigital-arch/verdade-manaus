@@ -19,17 +19,16 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useRef } from 'https://esm.sh/react@18.2.0?dev';
         import { createRoot } from 'https://esm.sh/react-dom@18.2.0/client?dev';
-        import { Shield, Search, AlertTriangle, CheckCircle, XCircle, Info, Menu, X, Share2, MapPin, Settings, Key, Zap, Globe, Sparkles, RefreshCw, Paperclip, Mic, Download, Image as ImageIcon } from 'https://esm.sh/lucide-react@0.300.0?dev';
+        import { Shield, Search, AlertTriangle, CheckCircle, XCircle, Info, Menu, X, Share2, MapPin, Key, Zap, Globe, Sparkles, RefreshCw, Paperclip, Mic, Download, Image as ImageIcon } from 'https://esm.sh/lucide-react@0.300.0?dev';
 
         // Configuração das APIs
         const PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions";
         const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent"; // Mantido para multimodais se necessário
         const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 
-        // Chaves de API - Configure via modal de configurações
-        // NUNCA commit chaves direto no código!
-        const DEFAULT_OPENAI_KEY = "";
-        const DEFAULT_PERPLEXITY_KEY = "";
+        // Chaves de API - Fixas no código (usuários não precisam configurar nada)
+        const OPENAI_API_KEY = "sk-proj-COLOQUE_SUA_CHAVE_OPENAI_AQUI";
+        const PERPLEXITY_API_KEY = "pplx-COLOQUE_SUA_CHAVE_PERPLEXITY_AQUI";
 
         const fetchWithRetry = async (url, options, retries = 3) => {
             for (let i = 0; i < retries; i++) {
@@ -56,11 +55,9 @@
             const [activeTab, setActiveTab] = useState('home');
             const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-            // Estados para as chaves
-            const [openAIKey, setOpenAIKey] = useState(DEFAULT_OPENAI_KEY);
-            const [perplexityKey, setPerplexityKey] = useState(DEFAULT_PERPLEXITY_KEY);
-            const [geminiKey, setGeminiKey] = useState(''); // Mantido opcional para multimodais
-            const [showSettingsModal, setShowSettingsModal] = useState(false);
+            // Chaves fixas - usuários não precisam configurar
+            const openAIKey = OPENAI_API_KEY;
+            const perplexityKey = PERPLEXITY_API_KEY;
 
             // Estados novos (Phase 2)
             const [trendingNews, setTrendingNews] = useState([]);
@@ -141,14 +138,11 @@
 
             const handleFileUpload = async (fileOrEvent, type) => {
                 const file = fileOrEvent.target ? fileOrEvent.target.files[0] : fileOrEvent;
-
-                if (!file || !geminiKey) {
-                    if (!geminiKey) {
-                        alert("Para usar upload de arquivos, você precisa de uma chave Gemini (configure nas opções).");
-                        setShowSettingsModal(true);
-                    }
-                    return;
-                }
+                if (!file) return;
+                
+                // Funcionalidade de upload desativada temporariamente
+                alert("Upload de arquivos em desenvolvimento.");
+                return;
 
                 setIsTranscribing(true);
                 try {
@@ -213,7 +207,7 @@
                 if (!textToSearch) return;
 
                 if (!openAIKey || !perplexityKey) {
-                    setShowSettingsModal(true);
+                    alert("Erro: Chaves de API não configuradas.");
                     return;
                 }
 
@@ -417,43 +411,7 @@
                         </div>
                     )}
 
-                    {/* Settings Modal */}
-                    {showSettingsModal && (
-                        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-                            <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h3 className="text-lg font-bold flex items-center gap-2">
-                                        <Settings className="text-emerald-600" size={20} />
-                                        Configurar APIs (Híbrido)
-                                    </h3>
-                                    <button onClick={() => setShowSettingsModal(false)} className="text-slate-400 hover:text-slate-600">
-                                        <X size={20} />
-                                    </button>
-                                </div>
 
-                                <p className="text-sm text-slate-600 mb-4 bg-yellow-50 p-3 rounded border border-yellow-100">
-                                    Chave Perplexity é usada para buscas. Gemini (opcional) para arquivos.
-                                </p>
-
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">OpenAI API Key (Análise)</label>
-                                        <input type="password" value={openAIKey} onChange={(e) => setOpenAIKey(e.target.value)} className="w-full p-3 border border-slate-300 rounded-lg outline-none font-mono text-sm" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Perplexity API Key (Busca/Verificação)</label>
-                                        <input type="password" value={perplexityKey} onChange={(e) => setPerplexityKey(e.target.value)} placeholder="pplx-..." className="w-full p-3 border border-slate-300 rounded-lg outline-none font-mono text-sm" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Google Gemini Key (Opcional - Arquivos)</label>
-                                        <input type="password" value={geminiKey} onChange={(e) => setGeminiKey(e.target.value)} placeholder="Cole sua Gemini API Key..." className="w-full p-3 border border-slate-300 rounded-lg outline-none font-mono text-sm" />
-                                    </div>
-                                </div>
-
-                                <button onClick={() => setShowSettingsModal(false)} className="mt-6 w-full bg-emerald-600 text-white py-3 rounded-lg font-bold hover:bg-emerald-700 transition">Salvar Configurações</button>
-                            </div>
-                        </div>
-                    )}
 
                     {/* Header */}
                     <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
@@ -470,10 +428,8 @@
                             <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
                                 <button onClick={() => setActiveTab('home')} className={`hover:text-emerald-600 transition ${activeTab === 'home' ? 'text-emerald-600' : ''}`}>Início</button>
                                 <button onClick={() => setActiveTab('verify')} className={`hover:text-emerald-600 transition ${activeTab === 'verify' ? 'text-emerald-600' : ''}`}>Verificar</button>
-                                <button onClick={() => setShowSettingsModal(true)} className={`p-2 rounded-full hover:bg-slate-100 transition ${(!openAIKey || !perplexityKey) ? 'text-orange-500 animate-pulse' : 'text-slate-400'}`}><Settings size={18} /></button>
                             </nav>
                             <div className="flex items-center gap-3 md:hidden">
-                                <button onClick={() => setShowSettingsModal(true)} className={`text-slate-600 ${(!openAIKey || !perplexityKey) ? 'text-orange-500' : ''}`}><Settings size={20} /></button>
                                 <button className="text-slate-600" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>{mobileMenuOpen ? <X /> : <Menu />}</button>
                             </div>
                         </div>
