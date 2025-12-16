@@ -416,19 +416,30 @@ export default function App() {
       SUA MISSÃO: Determinar a veracidade da alegação com base no contexto fornecido.
       
       REGRAS DE VEREDITO:
-      - SE o contexto confirmar com fontes oficiais -> VERDADEIRO (Confidence: High)
-      - SE o contexto tiver desmentidos de agências de checagem (mesmo sem Rede Onda Digital) -> FALSO (Confidence: High)
-      - SE o contexto mostrar que é antigo ou fora de contexto -> FALSO/ENGANOSO
-      - SE não houver NENHUMA menção em fontes confiáveis e for uma alegação grave -> CUIDADO (Sem provas)
+      - SE o contexto confirmar com fontes oficiais -> "true" (Confidence: High)
+      - SE o contexto tiver desmentidos de agências de checagem (Lupa, Aos Fatos, Boatos.org, etc.) -> "fake" (Confidence: High)
+      - SE o contexto mostrar que é antigo ou fora de contexto -> "fake" (status enganoso)
+      - SE for um golpe ou fraude conhecida -> "scam"
+      - SE o contexto tiver informações contraditórias ou parciais -> "warning" (Impreciso)
+      - SE NÃO HOUVER NENHUMA fonte encontrada sobre o assunto (busca não retornou resultados relevantes) -> "unverified"
       
-      IMPORTANTE: Não fique "em cima do muro". Se é boato conhecido, crave FALSO.
+      IMPORTANTE SOBRE "unverified":
+      Use "unverified" quando a busca não encontrou NENHUMA informação sobre o assunto.
+      Isso NÃO significa que é falso - significa que não há fontes para confirmar ou negar.
+      Neste caso:
+      - Analise RED FLAGS no texto (linguagem sensacionalista, erros, apelo emocional)
+      - Oriente o usuário a aguardar confirmação oficial
+      - Sugira cautela ao compartilhar
+
+      IMPORTANTE: Se é boato CONHECIDO e desmentido, crave "fake". Só use "unverified" quando realmente não há informações.
 
       Responda EXCLUSIVAMENTE um objeto JSON válido (sem markdown):
       {
-        "status": "true" | "fake" | "warning" | "scam",
+        "status": "true" | "fake" | "warning" | "scam" | "unverified",
         "title": "Veredito Curto e Impactante",
-        "message": "Explicação direta. Comece com 'É FALSO que...' ou 'É VERDADE que...'. Cite a fonte se houver.",
-        "confidence": "XX%"
+        "message": "Explicação direta. Para unverified: 'Não encontramos fontes sobre...'. Para fake: 'É FALSO que...'. Para true: 'É VERDADE que...'",
+        "confidence": "XX%",
+        "tip": "Dica opcional para o usuário (ex: 'Aguarde confirmação oficial antes de compartilhar')"
       }`;
 
             const openAIPayload = {
@@ -476,20 +487,23 @@ export default function App() {
             fake: 'bg-red-100 text-red-700 border-red-200',
             true: 'bg-green-100 text-green-700 border-green-200',
             scam: 'bg-orange-100 text-orange-700 border-orange-200',
-            warning: 'bg-yellow-100 text-yellow-800 border-yellow-200'
+            warning: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+            unverified: 'bg-slate-100 text-slate-700 border-slate-300'
         };
 
         const labels = {
             fake: 'FALSO',
             true: 'VERDADEIRO',
             scam: 'GOLPE',
-            warning: 'IMPRECISO'
+            warning: 'IMPRECISO',
+            unverified: 'SEM CONFIRMAÇÃO'
         };
         const icons = {
             fake: <XCircle size={14} className="mr-1" />,
             true: <CheckCircle size={14} className="mr-1" />,
             scam: <AlertTriangle size={14} className="mr-1" />,
-            warning: <AlertTriangle size={14} className="mr-1" />
+            warning: <AlertTriangle size={14} className="mr-1" />,
+            unverified: <Search size={14} className="mr-1" />
         };
 
         return (
@@ -516,9 +530,13 @@ export default function App() {
 
                         <div className="z-10 text-center">
                             <div className={`inline-block px-8 py-2 rounded-full text-3xl font-bold mb-6 border-4 ${result.status === 'fake' ? 'bg-red-600 border-red-400' :
-                                result.status === 'true' ? 'bg-emerald-600 border-emerald-400' : 'bg-orange-500 border-orange-300'
+                                    result.status === 'true' ? 'bg-emerald-600 border-emerald-400' :
+                                        result.status === 'unverified' ? 'bg-slate-600 border-slate-400' :
+                                            'bg-orange-500 border-orange-300'
                                 }`}>
-                                {result.status === 'fake' ? 'FALSO ❌' : result.status === 'true' ? 'VERDADEIRO ✅' : 'CUIDADO ⚠️'}
+                                {result.status === 'fake' ? 'FALSO ❌' :
+                                    result.status === 'true' ? 'VERDADEIRO ✅' :
+                                        result.status === 'unverified' ? 'SEM CONFIRMAÇÃO 🔍' : 'CUIDADO ⚠️'}
                             </div>
                             <h2 className="text-2xl font-bold mb-4 leading-tight">"{result.title}"</h2>
                             <p className="text-xl text-slate-300">{result.message}</p>
@@ -903,10 +921,26 @@ export default function App() {
 
                                 {result && status === 'done' && (
                                     <div className="w-full">
-                                        <div className={`p-6 rounded-xl border-2 mb-6 text-center ${result.status === 'fake' ? 'bg-red-50 border-red-100' : result.status === 'true' ? 'bg-green-50 border-green-100' : 'bg-orange-50 border-orange-100'}`}>
-                                            <div className="flex justify-center mb-4 text-4xl">{result.status === 'fake' ? '❌' : result.status === 'true' ? '✅' : '⚠️'}</div>
+                                        <div className={`p-6 rounded-xl border-2 mb-6 text-center ${result.status === 'fake' ? 'bg-red-50 border-red-100' :
+                                            result.status === 'true' ? 'bg-green-50 border-green-100' :
+                                                result.status === 'unverified' ? 'bg-slate-50 border-slate-200' :
+                                                    'bg-orange-50 border-orange-100'
+                                            }`}>
+                                            <div className="flex justify-center mb-4 text-4xl">
+                                                {result.status === 'fake' ? '❌' :
+                                                    result.status === 'true' ? '✅' :
+                                                        result.status === 'unverified' ? '🔍' : '⚠️'}
+                                            </div>
                                             <h3 className="text-2xl font-bold mb-2 text-slate-800">{result.title}</h3>
                                             <p className="text-slate-700">{result.message}</p>
+
+                                            {/* Tip/Orientação para o usuário */}
+                                            {result.tip && (
+                                                <div className="mt-4 p-3 bg-white/80 rounded-lg border border-slate-200 text-sm text-slate-600 flex items-start gap-2">
+                                                    <AlertTriangle size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                                                    <span>{result.tip}</span>
+                                                </div>
+                                            )}
 
                                             {/* WhatsApp Card Action */}
                                             <button onClick={generateCard} className="mt-6 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2 mx-auto transition shadow-lg shadow-green-200">
